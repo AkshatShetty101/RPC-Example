@@ -33,6 +33,7 @@ socket.on('connect', function () { //Don't send until we're connected
         console.log('The result is: ' + message.result);
     });
 });
+socket.on('error',connectionErrorHandler);
 
 function retryServerConnection(port,host){
     socket.connect(portList[port], host);    

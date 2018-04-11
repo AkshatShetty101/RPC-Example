@@ -8,13 +8,18 @@ if (myArgs.length >= 1) {
     server.listen(port);
     server.on('connection', function (socket) { //This is a standard net.Socket
         socket = new JsonSocket(socket); //Now we've decorated the net.Socket to be a JsonSocket
-
+        console.log('Master established connection!');
         socket.on('message', function (message) {
             console.log(message);
             let result = message.a + message.b;
             socket.sendEndMessage({ result: result });
         });
+        socket.on('error',connectionErrorHandler);
     });
 } else {
     console.log('Port not specifed!');
+}
+
+function connectionErrorHandler(data) {
+    console.log('Master terminated the connection!');
 }

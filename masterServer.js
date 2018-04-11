@@ -11,7 +11,7 @@ server.listen(port);
 var CronJob = require('cron').CronJob;
 var job = new CronJob({
     cronTime: '00 */1 * * * *', // Every 2 mins
-    onTick: retryServerConnection,
+    onTick: connectToSlaves,
     start: true,
     runOnInit: true
 });
@@ -26,25 +26,27 @@ server.on('connection', function (socket) { //This is a standard net.Socket
 
 function connectToSlaves() {
     for (i in portList) {
-        retryServerConnection(i,host);
+        console.log(i);
+        retryServerConnection(i, host);
     }
 }
 
-function retryServerConnection(port, host) {
-    if (!slaveSocket[port]) {
+function retryServerConnection(p, host) {
+    if (!slaveSocket[p] || slaveSocket[p]._closed == true) {
+        console.log('Trying slave at port: ', portList[p]);
         let socket = new JsonSocket(new net.Socket()); //Decorate a standard net.Socket with JsonSocket
-        socket.connect(portList[port], host);
+        socket.connect(portList[p], host);
         socket.on('error', connectionErrorHandler);
-        slaveSocket[port] = socket;
+        socket.on('connect', () => {
+            slaveSocket[p] = socket;
+            console.log('Connection established to slave at port: ', portList[p]);
+        });
     } else {
-        console.log('Connection already established!');
+        console.log('Connection already established to slave at port:', portList[p]);
+        console.log(slaveSocket[p]._closed);
     }
 }
 
 function connectionErrorHandler(data) {
     console.log('Slave is not up');
-}
-
-function pollSlaves() {
-
 }
