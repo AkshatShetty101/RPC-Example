@@ -1,6 +1,6 @@
 const net = require('net'),
     JsonSocket = require('json-socket');
-
+const async = require('async');
 let portList = [4000, 5000, 6000];
 let port = 9389;
 let host = '127.0.0.1';
@@ -9,7 +9,7 @@ let slaveSocket = []
 server.listen(port);
 
 var CronJob = require('cron').CronJob;
-var job = new CronJob({
+let job = new CronJob({
     cronTime: '00 */1 * * * *', // Every 2 mins
     onTick: connectToSlaves,
     start: true,
@@ -18,11 +18,54 @@ var job = new CronJob({
 
 server.on('connection', function (socket) { //This is a standard net.Socket
     clientSocket = new JsonSocket(socket); //Now we've decorated the net.Socket to be a JsonSocket
-    socket.on('message', function (message) {
-        let result = message.a + message.b;
-        socket.sendEndMessage({ result: result });
+    console.log('client connected!');
+    clientSocket.on('message', async (message) => {
+        var result = message.data.code + message.data.x;
+        console.log(result);
+        let x = await pollSlaves();
+        clientSocket.sendEndMessage({ result: x });
+    });
+    clientSocket.on('error', (error) => {
+        console.log(error);
     });
 });
+
+function pollSlaves() {
+    return new Promise((resolve, reject) => {
+        let list = [];
+        async.each(slaveSocket, (socket, callback) => {
+            console.log('in!');
+            socket.sendMessage({ type: 1 });
+            socket.on('message', (data) => {
+                console.log('ahere!');
+                console.log(data);
+                list.push(data.data);
+                callback();
+            });
+        }, (data) => {
+            if (data) {
+                console.log('data:');
+                console.log(data);
+                reject(data);
+            } else {
+                console.log('here!');
+                console.log(list);
+                let min = list[0];
+                let pos = list[1];
+                if (min != 0) {
+                    for (let i = 1; i < list.length; i++) {
+                        if (list[i] < min) {
+                            min = list[i];
+                            pos = i;
+                        }
+                    }
+                }
+                resolve(portList[pos]);
+
+            }
+        })
+    });
+}
 
 function connectToSlaves() {
     for (i in portList) {
@@ -32,7 +75,7 @@ function connectToSlaves() {
 }
 
 function retryServerConnection(p, host) {
-    if (!slaveSocket[p] || slaveSocket[p]._closed == true) {
+    if (!slaveSocket[p]) {
         console.log('Trying slave at port: ', portList[p]);
         let socket = new JsonSocket(new net.Socket()); //Decorate a standard net.Socket with JsonSocket
         socket.connect(portList[p], host);
