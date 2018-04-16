@@ -14,10 +14,16 @@ require('events').EventEmitter.prototype._maxListeners = 20;
 
 router.post('/', async (ctx, next) => {
     console.log(ctx.request.body);
-    let data = await sendReqToMaster(ctx.request.body)
-    console.log('sending response!');
-    ctx.body = { status: "1", message: data };
-    // });
+    try{
+        let data = await sendReqToMaster(ctx.request.body)
+        console.log('sending response!');
+        console.log(data);
+        let url = 'localhost:'+data.result.port+"?id="+data.result.id;
+        ctx.body = { status: "1", message: url };    
+    }catch(err){
+        console.log(err.toString())
+        ctx.body = {status:-1,err:err.toString()};       
+    }
 });
 
 app.use(router.routes())
@@ -30,9 +36,8 @@ app.listen(3000, () => {
 /**
  * Server communication code!
  * */
-let portList = [9389];
-let port = 0; //The same port that the server is listening on
-let max = portList.length;
+let port = 9389; //The same port that the server is listening on
+// let max = portList.length;
 let host = '127.0.0.1';
 let socket = new JsonSocket(new net.Socket()); //Decorate a standard net.Socket with JsonSocket
 let ct = 0;
@@ -46,22 +51,29 @@ socket.on('connect', function () { //Don't send until we're connected
 socket.on('error', connectionErrorHandler);
 
 function retryServerConnection(port, host) {
-    socket.connect(portList[port], host);
+    socket.connect(port, host);
     socket.on('error', connectionErrorHandler);
 }
 
 function sendReqToMaster(data) {
     return new Promise((resolve, reject) => {
-        socket.sendMessage({ data: data });
-        // resolve('1');
-        socket.on('message', (message) => {
-            console.log(message);
-            resolve(message);
+        JsonSocket.sendSingleMessageAndReceive(port,host,{data:data},(err,message)=>{
+            if(err){
+                reject(err);
+            } else {
+                resolve(message);
+            }
         });
-        socket.on('error', (message) => {
-            console.log(message);
-            reject(message);
-        });
+        // socket.sendMessage({ data: data });
+        // // resolve('1');
+        // socket.on('message', (message) => {
+        //     console.log(message);
+        //     resolve(message);
+        // });
+        // socket.on('error', (message) => {
+        //     console.log(message);
+        //     reject(message);
+        // });
     });
 }
 
