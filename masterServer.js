@@ -16,59 +16,89 @@ let job = new CronJob({
     runOnInit: true
 });
 
+let countOfInstance = 0;
+
 server.on('connection', function (socket) { //This is a standard net.Socket
     clientSocket = new JsonSocket(socket); //Now we've decorated the net.Socket to be a JsonSocket
     console.log('client connected!');
+    console.log('CountofInstance', countOfInstance);
+    countOfInstance++;
     clientSocket.on('message', async (message) => {
-        var result = message.data.code + message.data.x;
-        console.log(result);
-        let x = await pollSlaves();
-        clientSocket.sendEndMessage({ result: x });
+        // var result = message.data.code + message.data.x;
+        // console.log(result);
+        try {
+            let x = await pollSlaves(slaveSocket, message);
+            clientSocket.sendMessage({ result: x });
+        } catch (err) {
+            console.log(err);
+            clientSocket.sendError(new Error(err));
+        }
     });
     clientSocket.on('error', (error) => {
         console.log(error);
     });
 });
 
-function pollSlaves() {
+function pollSlaves(slaveSocket, message) {
+    let list = [];
+    console.log('In slavePolls');
     return new Promise((resolve, reject) => {
-        let list = [];
-        async.each(slaveSocket, (socket, callback) => {
-            console.log('in!');
-            socket.sendMessage({ type: 1 });
-            socket.on('message', (data) => {
-                console.log('ahere!');
-                console.log(data);
-                list.push(data.data);
-                callback();
-            });
-        }, (data) => {
-            if (data) {
-                console.log('data:');
-                console.log(data);
-                reject(data);
-            } else {
-                console.log('here!');
-                console.log(list);
-                let min = list[0];
-                let pos = list[1];
-                if (min != 0) {
-                    for (let i = 1; i < list.length; i++) {
-                        if (list[i] < min) {
-                            min = list[i];
-                            pos = i;
+        if (slaveSocket.length == 0) {
+            console.log('Rejecting request');
+            reject("Slave servers are down!");
+        } else {
+            async.each(portList, (port, callback) => {
+                console.log('in!', port);
+                JsonSocket.sendSingleMessageAndReceive(port, host, { type: 1 }, (err, data) => {
+                    if (err) {
+                        console.log(err);
+                    } else {
+                        console.log('received message');
+                        console.log(data);
+                        // list.push({ id: 1, count: 0 });
+                        list.push(data);
+                        console.log(list);
+
+                    }
+                    callback();
+                });
+            }, (err) => {
+                console.log('In callback!');
+                if (err) {
+                    console.log('Slave not up!');
+                } else {
+                    console.log(list);
+                    let min = list[0].count;
+                    let pos = 0;
+                    if (min != 0) {
+                        for (let i = 1; i < list.length; i++) {
+                            if (list[i].count < min) {
+                                min = list[i].count;
+                                pos = i;
+                            }
                         }
                     }
+                    console.log("Selected port to assign job:", (list[pos].port + 1));
+                    message.id = list[pos].id;
+                    message.type = 2;
+                    JsonSocket.sendSingleMessage(list[pos].port, host, message, (err, data) => {
+                        if (err) {
+                            console.log(err);
+                        } else {
+                            resolve({ id: list[pos].id, port: (list[pos].port + 1) });
+                        }
+                    });
                 }
-                resolve(portList[pos]);
+            });
 
-            }
-        })
+        }
+
     });
+
 }
 
 function connectToSlaves() {
-    for (i in portList) {
+    for (let i in portList) {
         console.log(i);
         retryServerConnection(i, host);
     }
